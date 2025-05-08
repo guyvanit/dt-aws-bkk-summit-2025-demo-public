@@ -1,0 +1,139 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Transform: AWS::Serverless-2016-10-31
+Description: Deploy AWS Lambda functions for analyzing CUR and formatting Bedrock agent prompts
+
+Globals:
+  Function:
+    Handler: lambda_function.lambda_handler
+    Runtime: python3.13
+    Architectures:
+      - x86_64
+    Timeout: 300
+    MemorySize: 128
+    Environment:
+      Variables:
+        POWERTOOLS_LOG_LEVEL: INFO
+        POWERTOOLS_LOGGER_SAMPLE_RATE: 0.1
+    
+Parameters:
+  AthenaWorkGroup:
+    Type: String
+    Description: Athena Workgroup to use for the queries
+  AthenaCatalog:
+    Type: String
+    Default: AwsDataCatalog
+    Description: Athena Catalog to use for the queries
+  AthenaDatabase:
+    Type: String
+    Description: Athena Database to use for the queries
+  AthenaWorkGroupBucketName:
+    Type: String
+    Description: S3 bucket name for Athena workgroup
+
+  BedrockAgentPromptTemplateId:
+    Type: String
+    Description: Bedrock agent prompt template ID
+  BedrockAgentPromptTemplateVersion:
+    Type: String
+    Description: Bedrock agent prompt template version
+
+Resources:
+
+  AnalyzeCurActionGroupLambda:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: functions/analyze-cur
+      MemorySize: 1024
+      Environment:
+        Variables:
+          POWERTOOLS_SERVICE_NAME: analyze-cur-action-group
+          ATHENA_WORKGROUP: !Ref AthenaWorkGroup
+          ATHENA_CATALOG: !Ref AthenaCatalog
+          ATHENA_DATABASE: !Ref AthenaDatabase
+          ATHENA_NUM_ROUNDS: 30
+          ATHENA_WAITTIME: 5
+      Policies:
+        - Version: "2012-10-17"
+          Statement:
+            - Effect: Allow
+              Action:
+                - athena:StartQueryExecution
+                - athena:GetQueryExecution
+                - athena:GetQueryResults
+              Resource: !Sub "arn:${AWS::Partition}:athena:${AWS::Region}:${AWS::AccountId}:workgroup/${AthenaWorkGroup}"
+            - Effect: Allow
+              Action: glue:Get*
+              Resource: "*"
+            - Effect: Allow
+              Action:
+                - s3:GetObject
+                - s3:ListBucket
+                - s3:GetBucketLocation
+                - s3:GetObjectVersion
+                - s3:GetLifecycleConfiguration
+              Resource: '*'
+            - Effect: Allow
+              Action:
+                - s3:ListBucket
+                - s3:GetObject*
+                - s3:PutObject*
+              Resource:
+                - !Sub "arn:${AWS::Partition}:s3:::${AthenaWorkGroupBucketName}"
+                - !Sub "arn:${AWS::Partition}:s3:::${AthenaWorkGroupBucketName}/athena-query/*"
+      Layers:
+        - !Ref HelperLayer
+
+  FormatAgentPromptLambda:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: functions/format-agent-prompt
+      Handler: lambda_function.lambda_handler
+      Timeout: 30
+      Environment:
+        Variables:
+          POWERTOOLS_SERVICE_NAME: format-agent-prompt
+          BEDROCK_PROMPT_ID: !Ref BedrockAgentPromptTemplateId
+          BEDROCK_PROMPT_VERSION: !Ref BedrockAgentPromptTemplateVersion
+      Policies:
+        - Version: "2012-10-17"
+          Statement:
+            - Effect: Allow
+              Action:
+                - bedrock:GetPrompt
+              Resource: !Sub "arn:${AWS::Partition}:bedrock:${AWS::Region}:${AWS::AccountId}:prompt/${BedrockAgentPromptTemplateId}:*"
+      Layers:
+        - !Ref HelperLayer
+
+  AnalyzeCurBedrockPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      Action: lambda:invokeFunction
+      FunctionName: !Ref AnalyzeCurActionGroupLambda
+      Principal: bedrock.amazonaws.com
+      SourceAccount: !Ref AWS::AccountId
+  FormatAgentPromptBedrockPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      Action: lambda:invokeFunction
+      FunctionName: !Ref FormatAgentPromptLambda
+      Principal: bedrock.amazonaws.com
+      SourceAccount: !Ref AWS::AccountId
+
+  HelperLayer:
+    Type: AWS::Serverless::LayerVersion
+    Properties:
+      ContentUri: functions/layers/helper-layer
+      CompatibleRuntimes:
+        - python3.13
+      CompatibleArchitectures:
+        - x86_64
+      RetentionPolicy: Retain
+    Metadata:
+      BuildMethod: python3.13
+      BuildArchitecture: x86_64
+
+Outputs:
+  AnalyzeCurActionGroupLambdaArn:
+    Value: !GetAtt AnalyzeCurActionGroupLambda.Arn
+  FormatAgentPromptLambdaArn:
+    Value: !GetAtt FormatAgentPromptLambda.Arn

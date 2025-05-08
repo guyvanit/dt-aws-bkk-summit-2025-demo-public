@@ -1,0 +1,189 @@
+{
+    "node": {
+        "name": "FormatAgentInput",
+        "inputs": [
+            {
+                "name": "kb_chunks",
+                "expression": "$.data",
+                "value": [
+                    {
+                        "content": {
+                            "byteContent": null,
+                            "row": null,
+                            "text": "{\n  \"name\": \"EC2 Query1\",\n  \"service\": \"EC2\",\n  \"category\": \"CostManagement\",\n  \"description\": \"This query will provide information about EC2 instance costs including instance types, usage, and costs across different accounts and regions.\",\n  \"sql\": \"SELECT SPLIT_PART(savings_plan_savings_plan_a_r_n, '/', 2) AS split_savings_plan_savings_plan_a_r_n, bill_payer_account_id, line_item_usage_account_id,  DATE_FORMAT((line_item_usage_start_date),'%Y-%m') AS month_line_item_usage_start_date, savings_plan_offering_type, savings_plan_region, DATE_FORMAT(FROM_ISO8601_TIMESTAMP(savings_plan_start_time),'%Y-%m-%d') AS day_savings_plan_start_time, DATE_FORMAT(FROM_ISO8601_TIMESTAMP(savings_plan_end_time),'%Y-%m-%d') AS day_savings_plan_end_time, savings_plan_payment_option, savings_plan_purchase_term, SUM(TRY_CAST(savings_plan_recurring_commitment_for_billing_period AS DECIMAL(16, 8))) AS sum_savings_plan_recurring_committment_for_billing_period, SUM(TRY_CAST(savings_plan_total_commitment_to_date AS DECIMAL(16, 8))) AS sum_savings_plan_total_commitment_to_date, SUM(TRY_CAST(savings_plan_used_commitment AS DECIMAL(16, 8))) AS sum_savings_plan_used_commitment, AVG(CASE WHEN line_item_line_item_type = 'SavingsPlanRecurringFee' THEN TRY_CAST(savings_plan_total_commitment_to_date AS DECIMAL(8, 2)) END) AS \\\"Hourly Commitment\\\", -- (used commitment / total commitment) * 100 = utilization % TRY_CAST(((SUM(TRY_CAST(savings_plan_used_commitment AS DECIMAL(16, 8))) / SUM(TRY_CAST(savings_plan_total_commitment_to_date AS DECIMAL(16, 8))))) AS DECI FROM ${table_name} WHERE DATE_TRUNC('month', line_item_usage_start_date) = \\\"date_trunc\\\"('month', current_date) - INTERVAL '1' MONTH --last month AND savings_plan_savings_plan_a_r_n <> '' AND line_item_line_item_type = 'SavingsPlanRecurringFee' AND try_cast(date_parse(SPLIT_PART(savings_plan_end_time, 'T', 1), '%Y-%m-%d') as date) > cast(current_date as date) --res exp time after today's date GROUP BY SPLIT_PART(savings_plan_savings_plan_a_r_n, '/', 2), bill_payer_account_id, line_item_usage_account_id, DATE_FORMAT((line_item_usage_start_date),'%Y-%m'), savings_plan_offering_type, savings_plan_region, DATE_FORMAT(FROM_ISO8601_TIMESTAMP(savings_plan_start_time),'%Y-%m-%d'), DATE_FORMAT(FROM_ISO8601_TIMESTAMP(savings_plan_end_time),'%Y-%m-%d'), savings_plan_payment_option, savings_plan_purchase_term ORDER BY calc_savings_plan_utilization_percent DESC, day_savings_plan_end_time, split_savings_plan_savings_plan_a_r_n, month_line_item_usage_start_date; Back to Table of Contents Help & Feedback Top 50 Resource Movers Query Description This query produces the top 50 moving resources by 1/ cost delta and 2/ change in percentage. The parameters have been adjusted for comparison of resources from three days prior and two days prior as CUR may take up to 48 hours to update all estimated charges. Additionally, this query only pulls resources with greater than $5 in unblended cost in order to reduce noise from resources which did not exist in one of the look back periods or spun up at the end of one of the look back periods. These parameters may be adjusted as needed. Copy Query Legacy CUR CUR 2.0 FOCUS v1\"\n}",
+                            "type": "TEXT"
+                        },
+                        "location": {
+                            "confluenceLocation": null,
+                            "customDocumentLocation": null,
+                            "kendraDocumentLocation": null,
+                            "s3Location": {
+                                "uri": "s3://costanalysis-summit-demo-bucket-977597520676-us-east-1/kb/data-source/cur-query-library/jsons/CostManagement/EC2_Query1.json"
+                            },
+                            "salesforceLocation": null,
+                            "sharePointLocation": null,
+                            "sqlLocation": null,
+                            "type": "S3",
+                            "webLocation": null
+                        },
+                        "metadata": {
+                            "x-amz-bedrock-kb-source-uri": "s3://costanalysis-summit-demo-bucket-977597520676-us-east-1/kb/data-source/cur-query-library/jsons/CostManagement/EC2_Query1.json",
+                            "content_type": "JSON",
+                            "service": "EC2",
+                            "x-amz-bedrock-kb-data-source-id": "57T6ZCNI9H",
+                            "name": "EC2 Query1",
+                            "created_at": "2024-04-12T00:00:00+00:00",
+                            "document_id": "EC2_Query1.json",
+                            "title": "EC2 Query1",
+                            "category": "CostManagement",
+                            "x-amz-bedrock-kb-chunk-id": "1%3A0%3AtMXmKpYBMc2tRTJNF6C5"
+                        },
+                        "score": 0.49973682
+                    },
+                    {
+                        "content": {
+                            "byteContent": null,
+                            "row": null,
+                            "text": "{\n  \"name\": \"EC2 Query4\",\n  \"service\": \"EC2\",\n  \"category\": \"CostManagement\",\n  \"description\": \"This query will provide cost and usage information for Amazon EC2 instances, helping identify optimization opportunities.\",\n  \"sql\": \"SELECT distinct \\\"line_item_resource_id\\\" as new_line_item_resource_id, line_item_usage_account_id, product_product_name, DATE_FORMAT(line_item_usage_start_date,'%Y-%m-%d') usage_date, SUM(line_item_unblended_cost) as new_line_item_unblended_cost FROM ${table_name} WHERE \\\"line_item_resource_id\\\" <> '' AND line_item_unblended_cost > 5 AND \\\"line_item_usage_start_date\\\" = current_date - INTERVAL '2' DAY GROUP BY 1, -- resource id two days prior 2, -- account id 3, -- product name 4 -- usage date ) b ON a.old_line_item_resource_id = b.new_line_item_resource_id ) ORDER BY 5 DESC, -- cost delta 6 DESC -- change percentage LIMIT 50; Back to Table of Contents Help & Feedback CUR queries are provided as is. We recommend validating your data by comparing it against your monthly bill and Cost Explorer prior to making any \\ufb01nancial decisions. If you wish to provide feedback on these queries, there is an error, or you want to make a suggestion, please email: curquery@amazon.com Previous Next \"\n}",
+                            "type": "TEXT"
+                        },
+                        "location": {
+                            "confluenceLocation": null,
+                            "customDocumentLocation": null,
+                            "kendraDocumentLocation": null,
+                            "s3Location": {
+                                "uri": "s3://costanalysis-summit-demo-bucket-977597520676-us-east-1/kb/data-source/cur-query-library/jsons/CostManagement/EC2_Query4.json"
+                            },
+                            "salesforceLocation": null,
+                            "sharePointLocation": null,
+                            "sqlLocation": null,
+                            "type": "S3",
+                            "webLocation": null
+                        },
+                        "metadata": {
+                            "x-amz-bedrock-kb-source-uri": "s3://costanalysis-summit-demo-bucket-977597520676-us-east-1/kb/data-source/cur-query-library/jsons/CostManagement/EC2_Query4.json",
+                            "content_type": "JSON",
+                            "service": "EC2",
+                            "x-amz-bedrock-kb-data-source-id": "57T6ZCNI9H",
+                            "name": "EC2 Query4",
+                            "created_at": "2024-04-12T00:00:00+00:00",
+                            "document_id": "EC2_Query4.json",
+                            "title": "EC2 Query4",
+                            "category": "CostManagement",
+                            "x-amz-bedrock-kb-chunk-id": "1%3A0%3Au93lKpYBEYMr0vppwmrf"
+                        },
+                        "score": 0.49519375
+                    },
+                    {
+                        "content": {
+                            "byteContent": null,
+                            "row": null,
+                            "text": "{\n  \"name\": \"EC2 Query7\",\n  \"service\": \"EC2\",\n  \"category\": \"Container\",\n  \"description\": \"This query will provide cost and usage information for Amazon EC2 instances, helping identify optimization opportunities.\",\n  \"sql\": \"SELECT DATE_FORMAT( DATE_TRUNC( 'day', \\\"line_item_usage_start_date\\\" ), '%Y-%m-%d' ) AS \\\"date\\\", \\\"line_item_resource_id\\\" AS \\\"resource_id\\\", ARBITRARY(CONCAT( REPLACE( SPLIT_PART( \\\"line_item_resource_id\\\", '/', 1 ), 'pod', 'cluster' ), '/', SPLIT_PART( \\\"line_item_resource_id\\\", '/', 2 ) )) AS \\\"cluster_arn\\\", ARBITRARY(SPLIT_PART( \\\"line_item_resource_id\\\", '/', 2 )) AS \\\"cluster_name\\\", ARBITRARY(\\\"split_line_item_parent_resource_id\\\") AS \\\"node_instance_id\\\", ARBITRARY(\\\"resource_tags_aws_eks_node\\\") AS \\\"node_name\\\", ARBITRARY(SPLIT_PART( \\\"line_item_resource_id\\\", '/', 3 )) AS \\\"namespace\\\", ARBITRARY(\\\"resource_tags_aws_eks_workload_type\\\") AS \\\"controller_kind\\\", ARBITRARY(\\\"resource_tags_aws_eks_workload_name\\\") AS \\\"controller_name\\\", ARBITRARY(\\\"resource_tags_aws_eks_deployment\\\") AS \\\"deployment\\\", ARBITRARY(SPLIT_PART( \\\"line_item_resource_id\\\", '/', 4 )) AS \\\"pod_name\\\", ARBITRARY(SPLIT_PART( \\\"line_item_resource_id\\\", '/', 5 )) AS \\\"pod_uid\\\", SUM( CASE WHEN \\\"line_item_usage_type\\\" LIKE '%EKS-EC2-vCPU-Hours' THEN \\\"split_line_item_split_cost\\\" + \\\"split_line_item_unused_cost\\\" ELSE 0.0 END ) AS \\\"cpu_cost\\\", SUM( CASE WHEN \\\"line_item_usage_type\\\" LIKE '%EKS-EC2-GB-Hours' THEN \\\"split_line_item_split_cost\\\" + \\\"split_line_item_unused_cost\\\" ELSE 0.0 END ) AS \\\"ram_cost\\\", SUM( \\\"split_line_item_split_cost\\\" + \\\"split_line_item_unused_cost\\\" ) AS \\\"total_cost\\\" FROM ${table_name} WHERE \\\"line_item_operation\\\" = 'EKSPod-EC2' AND CURRENT_DATE - INTERVAL '7' DAY <= \\\"line_item_usage_start_date\\\" GROUP BY 1, 2 ORDER BY \\\"cluster_arn\\\", \\\"date\\\" DESC;  Amazon EKS - Split Cost Allocation Data Monthly Cost per Namespace per Cluster Query Description The below query shows monthly CPU cost, RAM cost and total split cost (CPU + RAM) per namespace per cluster, on all clusters. Results are sorted by month with total cost descending. In order to reduce the query size and output data we suggest modifying the ${date_\\ufb01lter} initially to a small de\\ufb01ned timeframe (i.e. three months). See our Filtering by Date help section for more information. Copy Query Legacy CUR CUR 2.0 FOCUS v1\"\n}",
+                            "type": "TEXT"
+                        },
+                        "location": {
+                            "confluenceLocation": null,
+                            "customDocumentLocation": null,
+                            "kendraDocumentLocation": null,
+                            "s3Location": {
+                                "uri": "s3://costanalysis-summit-demo-bucket-977597520676-us-east-1/kb/data-source/cur-query-library/jsons/Container/EC2_Query7.json"
+                            },
+                            "salesforceLocation": null,
+                            "sharePointLocation": null,
+                            "sqlLocation": null,
+                            "type": "S3",
+                            "webLocation": null
+                        },
+                        "metadata": {
+                            "x-amz-bedrock-kb-source-uri": "s3://costanalysis-summit-demo-bucket-977597520676-us-east-1/kb/data-source/cur-query-library/jsons/Container/EC2_Query7.json",
+                            "content_type": "JSON",
+                            "service": "EC2",
+                            "x-amz-bedrock-kb-data-source-id": "57T6ZCNI9H",
+                            "name": "EC2 Query7",
+                            "created_at": "2024-04-12T00:00:00+00:00",
+                            "document_id": "EC2_Query7.json",
+                            "title": "EC2 Query7",
+                            "category": "Container",
+                            "x-amz-bedrock-kb-chunk-id": "1%3A0%3AvsXmKpYBMc2tRTJNHKBQ"
+                        },
+                        "score": 0.49273273
+                    },
+                    {
+                        "content": {
+                            "byteContent": null,
+                            "row": null,
+                            "text": "{\n  \"name\": \"EC2 Query1\",\n  \"service\": \"EC2\",\n  \"category\": \"CostOptimization\",\n  \"description\": \"This query will provide information about EC2 instance costs including instance types, usage, and costs across different accounts and regions.\",\n  \"sql\": \"SELECT DATE_TRUNC('day',line_item_usage_start_date) AS day_line_item_usage_start_date, bill_payer_account_id, line_item_usage_account_id, line_item_product_code, product_instance_type, product_region, SUM(CASE WHEN line_item_line_item_type = 'SavingsPlanCoveredUsage' THEN savings_plan_savings_plan_effective_cost WHEN line_item_line_item_type = 'DiscountedUsage' THEN reservation_effective_cost WHEN line_item_line_item_type = 'Usage' THEN line_item_unblended_cost ELSE 0 END) AS sum_amortized_cost, SUM(line_item_usage_amount) as sum_line_item_usage_amount, COUNT(DISTINCT(line_item_resource_id)) AS count_line_item_resource_id FROM ${table_name} WHERE ${date_filter} AND REGEXP_LIKE(line_item_usage_type, '.?[a-z]([1-9]|[1-9][0-9]).?.?[g][a-zA-Z]?\\\\.') AND line_item_usage_type NOT LIKE '%EBSOptimized%' AND (line_item_line_item_type = 'Usage' OR line_item_line_item_type = 'SavingsPlanCoveredUsage' OR line_item_line_item_type = 'DiscountedUsage' ) GROUP BY DATE_TRUNC('day',line_item_usage_start_date), bill_payer_account_id, line_item_usage_account_id, line_item_product_code, line_item_usage_type, product_instance_type, product_region ORDER BY day_line_item_usage_start_date DESC, sum_amortized_cost DESC;\"\n}",
+                            "type": "TEXT"
+                        },
+                        "location": {
+                            "confluenceLocation": null,
+                            "customDocumentLocation": null,
+                            "kendraDocumentLocation": null,
+                            "s3Location": {
+                                "uri": "s3://costanalysis-summit-demo-bucket-977597520676-us-east-1/kb/data-source/cur-query-library/jsons/CostOptimization/EC2_Query1.json"
+                            },
+                            "salesforceLocation": null,
+                            "sharePointLocation": null,
+                            "sqlLocation": null,
+                            "type": "S3",
+                            "webLocation": null
+                        },
+                        "metadata": {
+                            "x-amz-bedrock-kb-source-uri": "s3://costanalysis-summit-demo-bucket-977597520676-us-east-1/kb/data-source/cur-query-library/jsons/CostOptimization/EC2_Query1.json",
+                            "content_type": "JSON",
+                            "service": "EC2",
+                            "x-amz-bedrock-kb-data-source-id": "57T6ZCNI9H",
+                            "name": "EC2 Query1",
+                            "created_at": "2024-04-12T00:00:00+00:00",
+                            "document_id": "EC2_Query1.json",
+                            "title": "EC2 Query1",
+                            "category": "CostOptimization",
+                            "x-amz-bedrock-kb-chunk-id": "1%3A0%3Av93mKpYBEYMr0vppEmpK"
+                        },
+                        "score": 0.48926356
+                    },
+                    {
+                        "content": {
+                            "byteContent": null,
+                            "row": null,
+                            "text": "{\n  \"name\": \"EC2 Query3\",\n  \"service\": \"EC2\",\n  \"category\": \"CostManagement\",\n  \"description\": \"This query will provide details on EC2 instance usage including idle and underutilized instances that might be candidates for resizing or termination.\",\n  \"sql\": \"SELECT distinct \\\"line_item_resource_id\\\" as old_line_item_resource_id, line_item_usage_account_id, product_product_name, DATE_FORMAT(line_item_usage_start_date,'%Y-%m-%d') usage_date, sum(line_item_unblended_cost) as old_line_item_unblended_cost FROM ${table_name} WHERE \\\"line_item_resource_id\\\" <> '' AND line_item_unblended_cost > 5 AND \\\"line_item_usage_start_date\\\" = current_date - INTERVAL '3' DAY GROUP BY 1, -- resource id three days prior 2, -- account id 3, -- product name 4 -- usage date ) a FULL OUTER JOIN (\"\n}",
+                            "type": "TEXT"
+                        },
+                        "location": {
+                            "confluenceLocation": null,
+                            "customDocumentLocation": null,
+                            "kendraDocumentLocation": null,
+                            "s3Location": {
+                                "uri": "s3://costanalysis-summit-demo-bucket-977597520676-us-east-1/kb/data-source/cur-query-library/jsons/CostManagement/EC2_Query3.json"
+                            },
+                            "salesforceLocation": null,
+                            "sharePointLocation": null,
+                            "sqlLocation": null,
+                            "type": "S3",
+                            "webLocation": null
+                        },
+                        "metadata": {
+                            "x-amz-bedrock-kb-source-uri": "s3://costanalysis-summit-demo-bucket-977597520676-us-east-1/kb/data-source/cur-query-library/jsons/CostManagement/EC2_Query3.json",
+                            "content_type": "JSON",
+                            "service": "EC2",
+                            "x-amz-bedrock-kb-data-source-id": "57T6ZCNI9H",
+                            "name": "EC2 Query3",
+                            "created_at": "2024-04-12T00:00:00+00:00",
+                            "document_id": "EC2_Query3.json",
+                            "title": "EC2 Query3",
+                            "category": "CostManagement",
+                            "x-amz-bedrock-kb-chunk-id": "1%3A0%3Au8XmKpYBMc2tRTJNG6CS"
+                        },
+                        "score": 0.4863357
+                    }
+                ],
+                "type": "ARRAY"
+            }
+        ]
+    },
+    "flow": {
+        "aliasId": "TSTALIASID",
+        "arn": "arn:aws:bedrock:us-east-1:977597520676:flow/CTDBT8DDO2"
+    },
+    "messageVersion": "1.0"
+}

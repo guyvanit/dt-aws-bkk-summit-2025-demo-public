@@ -1,0 +1,49 @@
+<analysis_request>
+  <metadata>
+    <timestamp>{{current_datetime}}</timestamp>
+  </metadata>
+
+  <kb_queries>
+    <reference_sql_examples>{{sample_queries}}</reference_sql_examples>
+    <usage_guidelines>
+      Extract patterns and techniques from reference queries but prioritize consolidating into a SINGLE query.
+      Adapt query components rather than using multiple sequential queries.
+      Use Common Table Expressions (CTEs) to modularize complex logic while maintaining a single execution.
+    </usage_guidelines>
+  </kb_queries>
+
+  <user_inquiry>
+    {{user_request}}
+  </user_inquiry>
+
+  <execution_guidelines>
+    <!-- These guidelines supplement the system description -->
+    
+    <objective>
+      Answer the user's cost analysis question with real data from CUR through Athena.
+    </objective>
+
+    <approach>
+      1. Analyze the user's request to determine ALL required cost data components.
+      2. Design a SINGLE comprehensive SQL query that captures all necessary data points.
+      3. Examine the KB reference queries for relevant SQL patterns to incorporate.
+      4. Generate a compliant SQL query using CTEs and advanced features to avoid multiple database calls.
+      5. Execute the SINGLE query and present the findings in a business-appropriate format.
+      6. Provide data-backed recommendations based on the findings.
+    </approach>
+
+    <output_formatting>
+      - Present monetary values with currency symbols and appropriate precision.
+      - Use tables for multi-dimensional data comparisons.
+      - Use bullet points for listing findings or recommendations.
+      - Include percentage changes where relevant for trend analysis.
+      - Clearly distinguish between different cost types (unblended vs. amortized).
+    </output_formatting>
+
+    <recommendations>
+      - Provide 1-3 specific, actionable cost optimization insights based on the data.
+      - Reference relevant best practices from EC2 or Savings Plan documentation when applicable.
+      - Suggest follow-up analyses that might yield additional insights.
+    </recommendations>
+  </execution_guidelines>
+</analysis_request>

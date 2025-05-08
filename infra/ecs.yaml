@@ -1,0 +1,456 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'CloudFormation template for Cost Analysis Chatbot ECS deployment'
+
+Parameters:
+  ResourcePrefix:
+    Type: String
+    Description: Unique prefix to identify resources.
+
+  VpcId:
+    Type: AWS::EC2::VPC::Id
+    Description: VPC ID for ECS Deployment
+  ECSSubnet1:
+    Type: AWS::EC2::Subnet::Id
+    Description: First private subnet ID for ECS tasks
+  ECSSubnet2:
+    Type: AWS::EC2::Subnet::Id
+    Description: Second private subnet ID for ECS tasks
+  ECSSubnet3:
+    Type: AWS::EC2::Subnet::Id
+    Description: Third private subnet ID for ECS tasks
+  ECSAssignPublicIp:
+    Type: String
+    Description: Assign public IP to ECS tasks
+    AllowedValues:
+      - ENABLED
+      - DISABLED
+    Default: DISABLED
+  ALBSubnet1:
+    Type: AWS::EC2::Subnet::Id
+    Description: First public subnet ID for ALB
+  ALBSubnet2:
+    Type: AWS::EC2::Subnet::Id
+    Description: Second public subnet ID for ALB
+  ALBSubnet3:
+    Type: AWS::EC2::Subnet::Id
+    Description: Third public subnet ID for ALB
+
+  ECRRepositoryUri:
+    Type: String
+    Description: ECR Repository URI for the container image (without :tag)
+    Default: '977597520676.dkr.ecr.us-east-1.amazonaws.com/cost-analysis-chatbot'
+
+  ImageTag:
+    Type: String
+    Description: Docker image tag to deploy
+    Default: 'latest'
+
+  TaskCpu:
+    Type: String
+    Description: CPU units for the ECS task
+    Default: '1024'
+
+  TaskMemory:
+    Type: String
+    Description: Memory for the ECS task in MB
+    Default: '2048'
+
+  ContainerPort:
+    Type: Number
+    Description: Container port to expose
+    Default: 8501
+
+  SsmPasswordParamPath:
+    Type: String
+    Description: SSM Parameter Store path for app password
+    Default: '/cost-analysis-chatbot-demo/app/password'
+    
+  SsmEnvParamPrefix:
+    Type: String
+    Description: SSM Parameter Store prefix for environment variables
+    Default: '/cost-analysis-chatbot-demo/app/env/vars/'
+    
+  EnableWAF:
+    Type: String
+    Description: Enable WAF protection for the ALB
+    Default: 'true'
+    AllowedValues:
+      - 'true'
+      - 'false'
+
+Conditions:
+  ShouldEnableWAF: !Equals [!Ref EnableWAF, 'true']
+
+Resources:
+  # ECS Task Execution Role - Allows ECS to pull images and push logs
+  ECSTaskExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ecs-tasks.amazonaws.com
+            Action: 'sts:AssumeRole'
+      ManagedPolicyArns:
+        - !Sub "arn:${AWS::Partition}:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy"
+      Policies:
+        - PolicyName: SSMParameterAccess
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - 'ssm:GetParameters'
+                  - 'ssm:GetParameter'
+                Resource:
+                  - !Sub 'arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:parameter${SsmPasswordParamPath}'
+                  - !Sub 'arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:parameter${SsmEnvParamPrefix}*'
+              - Effect: Allow
+                Action:
+                  - 'kms:Decrypt'
+                Resource: '*'
+                Condition:
+                  StringEquals:
+                    'kms:ViaService': !Sub 'ssm.${AWS::Region}.amazonaws.com'
+
+  # ECS Task Role - Permissions for the container
+  ECSTaskRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ecs-tasks.amazonaws.com
+            Action: 'sts:AssumeRole'
+      Policies:
+        - PolicyName: SSMParameterAccess
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - 'ssm:GetParameter'
+                  - 'ssm:GetParameters'
+                Resource:
+                  - !Sub 'arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:parameter${SsmPasswordParamPath}'
+                  - !Sub 'arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:parameter${SsmEnvParamPrefix}*'
+        - PolicyName: BedrockAccess
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - 'bedrock:Invoke*'
+                Resource:
+                  - !Sub 'arn:${AWS::Partition}:bedrock:${AWS::Region}:${AWS::AccountId}:*'
+
+  # ECS Security Group
+  ECSSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Security Group for ECS Tasks
+      VpcId: !Ref VpcId
+      SecurityGroupIngress:
+        - Description: Allow inbound traffic from ALB
+          FromPort: !Ref ContainerPort
+          ToPort: !Ref ContainerPort
+          IpProtocol: tcp
+          SourceSecurityGroupId: !Ref ALBSecurityGroup
+      Tags:
+        - Key: Name
+          Value: !Sub '${ResourcePrefix}-ecs-sg'
+
+  # ALB Security Group
+  ALBSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Security Group for Application Load Balancer
+      VpcId: !Ref VpcId
+      SecurityGroupIngress:
+        - Description: Allow inbound HTTP traffic
+          FromPort: 80
+          ToPort: 80
+          IpProtocol: tcp
+          CidrIp: 0.0.0.0/0
+        - Description: Allow inbound HTTPS traffic
+          FromPort: 443
+          ToPort: 443
+          IpProtocol: tcp
+          CidrIp: 0.0.0.0/0
+      Tags:
+        - Key: Name
+          Value: !Sub '${ResourcePrefix}-alb-sg'
+
+  # Application Load Balancer
+  ApplicationLoadBalancer:
+    Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+    Properties:
+      Scheme: internet-facing
+      Type: application
+      Subnets:
+        - !Ref ALBSubnet1
+        - !Ref ALBSubnet2
+        - !Ref ALBSubnet3
+      SecurityGroups:
+        - !Ref ALBSecurityGroup
+      Tags:
+        - Key: Name
+          Value: !Sub '${ResourcePrefix}-alb'
+
+  # ALB Target Group
+  ALBTargetGroup:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      Port: !Ref ContainerPort
+      Protocol: HTTP
+      ProtocolVersion: HTTP1
+      VpcId: !Ref VpcId
+      TargetType: ip
+      HealthCheckPath: /
+      HealthCheckPort: !Ref ContainerPort
+      HealthCheckProtocol: HTTP
+      HealthCheckIntervalSeconds: 30
+      HealthCheckTimeoutSeconds: 5
+      HealthyThresholdCount: 3
+      UnhealthyThresholdCount: 3
+      Tags:
+        - Key: Name
+          Value: !Sub '${ResourcePrefix}-tg'
+
+  # ALB Listener
+  ALBListener:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      DefaultActions:
+        - Type: forward
+          TargetGroupArn: !Ref ALBTargetGroup
+      LoadBalancerArn: !Ref ApplicationLoadBalancer
+      Port: 80
+      Protocol: HTTP
+
+  # CloudWatch Log Group
+  LogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub '/ecs/${ResourcePrefix}-task-defn'
+      RetentionInDays: 30
+
+  # ECS Cluster
+  ECSCluster:
+    Type: AWS::ECS::Cluster
+    Properties:
+      CapacityProviders:
+        - FARGATE
+        - FARGATE_SPOT
+      DefaultCapacityProviderStrategy:
+        - CapacityProvider: FARGATE
+          Weight: 1
+      Tags:
+        - Key: Name
+          Value: !Sub '${ResourcePrefix}-cluster'
+
+  # ECS Task Definition
+  TaskDefinition:
+    Type: AWS::ECS::TaskDefinition
+    Properties:
+      Family: !Sub '${ResourcePrefix}-task-defn'
+      Cpu: !Ref TaskCpu
+      Memory: !Ref TaskMemory
+      NetworkMode: awsvpc
+      RequiresCompatibilities:
+        - FARGATE
+      ExecutionRoleArn: !GetAtt ECSTaskExecutionRole.Arn
+      TaskRoleArn: !GetAtt ECSTaskRole.Arn
+      ContainerDefinitions:
+        - Name: chatbot
+          Image: !Sub '${ECRRepositoryUri}:${ImageTag}'
+          Essential: true
+          PortMappings:
+            - Name: chatbot-8501-tcp
+              ContainerPort: !Ref ContainerPort
+              HostPort: !Ref ContainerPort
+              Protocol: tcp
+              AppProtocol: http
+          Environment:
+            - Name: LOG_TO_STDOUT
+              Value: 'true'
+            - Name: LOG_LEVEL
+              Value: 'DEBUG'
+          Secrets:
+            - Name: APP_PASSWORD
+              ValueFrom: !Sub 'arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:parameter${SsmPasswordParamPath}'
+            - Name: BEDROCK_FLOW_ID
+              ValueFrom: !Sub 'arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:parameter${SsmEnvParamPrefix}BEDROCK_FLOW_ID'
+            - Name: BEDROCK_FLOW_ALIAS_ID
+              ValueFrom: !Sub 'arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:parameter${SsmEnvParamPrefix}BEDROCK_FLOW_ALIAS_ID'
+            - Name: BEDROCK_AGENT_ID
+              ValueFrom: !Sub 'arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:parameter${SsmEnvParamPrefix}BEDROCK_AGENT_ID'
+            - Name: BEDROCK_AGENT_ALIAS_ID
+              ValueFrom: !Sub 'arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:parameter${SsmEnvParamPrefix}BEDROCK_AGENT_ALIAS_ID'
+          LogConfiguration:
+            LogDriver: awslogs
+            Options:
+              awslogs-group: !Ref LogGroup
+              mode: non-blocking
+              awslogs-create-group: 'true'
+              max-buffer-size: 25m
+              awslogs-region: !Ref AWS::Region
+              awslogs-stream-prefix: ecs
+      RuntimePlatform:
+        CpuArchitecture: X86_64
+        OperatingSystemFamily: LINUX
+      Tags:
+        - Key: Name
+          Value: !Sub '${ResourcePrefix}-task-defn'
+
+
+  # ECS Service
+  ECSService:
+    Type: AWS::ECS::Service
+    DependsOn: ALBListener
+    Properties:
+      Cluster: !Ref ECSCluster
+      TaskDefinition: !Ref TaskDefinition
+      DeploymentConfiguration:
+        MinimumHealthyPercent: 100
+        MaximumPercent: 200
+        DeploymentCircuitBreaker:
+          Enable: true
+          Rollback: true
+      DesiredCount: 1
+      EnableECSManagedTags: true
+      HealthCheckGracePeriodSeconds: 60
+      LaunchType: FARGATE
+      LoadBalancers:
+        - ContainerName: chatbot
+          ContainerPort: !Ref ContainerPort
+          TargetGroupArn: !Ref ALBTargetGroup
+      NetworkConfiguration:
+        AwsvpcConfiguration:
+          AssignPublicIp: !Ref ECSAssignPublicIp
+          SecurityGroups:
+            - !Ref ECSSecurityGroup
+          Subnets:
+            - !Ref ECSSubnet1
+            - !Ref ECSSubnet2
+            - !Ref ECSSubnet3
+      PlatformVersion: LATEST
+      SchedulingStrategy: REPLICA
+      Tags:
+        - Key: Name
+          Value: !Sub '${ResourcePrefix}-service'
+
+  # WAF Web ACL
+  BasicWAFWebACL:
+    Type: AWS::WAFv2::WebACL
+    Condition: ShouldEnableWAF
+    Properties:
+      Name: !Sub '${ResourcePrefix}-basic-waf'
+      Description: 'Basic WAF rules for ALB protection - Thailand Only'
+      Scope: REGIONAL
+      DefaultAction:
+        Block: {}  # Block all traffic by default
+      Rules:
+        # - Name: AllowSpecificIPs
+        #   Priority: 0  # Higher priority than geo-blocking
+        #   Action:
+        #     Allow: {}
+        #   Statement:
+        #     IPSetReferenceStatement:
+        #       ARN: !Ref YourIPSetARN  # Create an IP set with allowed IPs
+        #   VisibilityConfig:
+        #     SampledRequestsEnabled: true
+        #     CloudWatchMetricsEnabled: true
+        #     MetricName: AllowSpecificIPs
+
+        # Allow Thailand traffic first
+        - Name: AllowThailandTraffic
+          Priority: 1
+          Action:
+            Allow: {}
+          Statement:
+            GeoMatchStatement:
+              CountryCodes:
+                - TH  # Country code for Thailand
+          VisibilityConfig:
+            SampledRequestsEnabled: true
+            CloudWatchMetricsEnabled: true
+            MetricName: AllowThailandTraffic
+
+        # Rate limiting for Thailand traffic
+        - Name: RateLimitRule
+          Priority: 2
+          Action:
+            Block: {}
+          Statement:
+            RateBasedStatement:
+              Limit: 2000
+              AggregateKeyType: IP
+          VisibilityConfig:
+            SampledRequestsEnabled: true
+            CloudWatchMetricsEnabled: true
+            MetricName: RateLimitRule
+
+        # AWS Managed Rules after geo-filtering
+        - Name: AWSManagedRulesCommonRuleSet
+          Priority: 3
+          OverrideAction:
+            None: {}
+          Statement:
+            ManagedRuleGroupStatement:
+              VendorName: AWS
+              Name: AWSManagedRulesCommonRuleSet
+          VisibilityConfig:
+            SampledRequestsEnabled: true
+            CloudWatchMetricsEnabled: true
+            MetricName: AWSManagedRulesCommonRuleSetMetric
+
+      VisibilityConfig:
+        SampledRequestsEnabled: true
+        CloudWatchMetricsEnabled: true
+        MetricName: !Sub '${ResourcePrefix}-basic-waf-metrics'
+      Tags:
+        - Key: Name
+          Value: !Sub '${ResourcePrefix}-basic-waf'
+
+  # Associate WAF WebACL with the ALB
+  WebACLAssociation:
+    Type: AWS::WAFv2::WebACLAssociation
+    Condition: ShouldEnableWAF
+    Properties:
+      ResourceArn: !Ref ApplicationLoadBalancer
+      WebACLArn: !GetAtt BasicWAFWebACL.Arn
+
+Outputs:
+  ClusterName:
+    Description: ECS Cluster Name
+    Value: !Ref ECSCluster
+
+  ServiceName:
+    Description: ECS Service Name
+    Value: !Ref ECSService
+
+  TaskDefinition:
+    Description: Task Definition ARN
+    Value: !Ref TaskDefinition
+
+  LoadBalancerDNS:
+    Description: DNS name of the load balancer
+    Value: !GetAtt ApplicationLoadBalancer.DNSName
+
+  LoadBalancerURL:
+    Description: URL of the load balancer
+    Value: !Sub 'http://${ApplicationLoadBalancer.DNSName}'
+
+  WAFEnabled:
+    Description: WAF protection status
+    Value: !Ref EnableWAF
+    
+  WAFWebACLArn:
+    Description: WAF Web ACL ARN
+    Condition: ShouldEnableWAF
+    Value: !GetAtt BasicWAFWebACL.Arn

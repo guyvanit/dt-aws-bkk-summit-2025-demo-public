@@ -1,0 +1,22 @@
+{
+  "messageVersion": "1.0",
+  "agent": {
+    "name": "costanalysis-summit-demo-query-agent",
+    "id": "29NYMY9ERD",
+    "alias": "TSTALIASID",
+    "version": "DRAFT"
+  },
+  "inputText": "What were my EC2 costs last month?",
+  "sessionId": "test-session-id",
+  "actionGroup": "CostAnalysis",
+  "function": "QueryLegacyCUR",
+  "parameters": [
+    {
+      "name": "query",
+      "type": "string",
+      "value": "SELECT line_item_product_code, SUM(line_item_unblended_cost) AS total_cost FROM athena-with-id2 WHERE year = '2024' AND month = '03' AND line_item_product_code = 'AmazonEC2' GROUP BY line_item_product_code"
+    }
+  ],
+  "sessionAttributes": {},
+  "promptSessionAttributes": {}
+}

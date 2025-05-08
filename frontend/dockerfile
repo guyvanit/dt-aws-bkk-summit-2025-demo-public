@@ -1,0 +1,21 @@
+FROM --platform=linux/amd64 python:3.13
+
+WORKDIR /app
+
+COPY requirements.txt .
+RUN  pip3 install --upgrade pip && pip3 install -r requirements.txt
+
+COPY app.py .
+COPY utils/ ./utils/
+# COPY .streamlit/config.toml .streamlit/
+
+# Set required environment variables for local testing
+# ENV BEDROCK_FLOW_ID="<FLOW_ID>"
+# ENV BEDROCK_FLOW_ALIAS_ID="<FLOW_ALIAS_ID>"
+# ENV BEDROCK_AGENT_ID="<AGENT_ID>"
+# ENV BEDROCK_AGENT_ALIAS_ID="<AGENT_ALIAS_ID>"
+
+EXPOSE 8501
+
+CMD ["streamlit", "run", "app.py", "--server.address", "0.0.0.0", "--server.port", "8501"]
+# CMD ["streamlit", "run", "app.py", "--server.port", "8501"]
